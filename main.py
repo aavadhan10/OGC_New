@@ -632,7 +632,7 @@ def create_revenue_bands(filtered_df):
     
     with col1:
         if 'Quantity / Hours' in filtered_df.columns:
-            with st.expander("Hours by Revenue Band", expanded=True):
+            with st.expander("Hours by Fee Band", expanded=True):
                 # Hours by revenue band
                 rev_band_hours = filtered_df.groupby(revenue_band_col)['Quantity / Hours'].sum().reset_index()
                 
@@ -647,10 +647,10 @@ def create_revenue_bands(filtered_df):
                     pass
                 
                 fig = px.bar(rev_band_hours, x=revenue_band_col, y='Quantity / Hours',
-                             title='Hours by Client Annual Revenue Band',
-                             labels={revenue_band_col: 'Annual Revenue Band', 'Quantity / Hours': 'Hours'},
+                             title='Hours by Client Annual Fee Band',
+                             labels={revenue_band_col: 'Annual Fee Band', 'Quantity / Hours': 'Hours'},
                              color_discrete_sequence=[colors['secondary']])
-                fig.update_layout(xaxis_title="Annual Revenue Band", yaxis_title="Hours", height=350,
+                fig.update_layout(xaxis_title="Annual Fee Band", yaxis_title="Hours", height=350,
                                  xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
         else:
