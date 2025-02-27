@@ -673,10 +673,10 @@ def create_revenue_bands(filtered_df):
                     pass
                 
                 fig = px.bar(rev_band_clients, x=revenue_band_col, y='Client',
-                             title='Number of Clients by Annual Revenue Band',
-                             labels={revenue_band_col: 'Annual Revenue Band', 'Client': 'Number of Clients'},
+                             title='Number of Clients by Annual Fee Band',
+                             labels={revenue_band_col: 'Annual Fee Band', 'Client': 'Number of Clients'},
                              color_discrete_sequence=[colors['accent']])
-                fig.update_layout(xaxis_title="Annual Revenue Band", yaxis_title="Number of Clients", height=350,
+                fig.update_layout(xaxis_title="Annual Fee Band", yaxis_title="Number of Clients", height=350,
                                  xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
         else:
