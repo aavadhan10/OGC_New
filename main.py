@@ -393,26 +393,63 @@ def create_overview_section(filtered_df, time_entries_df, attorneys_df):
             st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        # Utilization vs Target
+        # Utilization vs Target - UPDATED WITH SAME LOGIC AS ATTORNEY ANALYSIS
         if not attorneys_df.empty and 'Target Hours' in attorneys_df.columns and 'Attorney Name' in attorneys_df.columns:
             with st.expander("Attorney Utilization", expanded=True):
+                # Filter attorneys with Target Hours > 1
+                valid_attorneys = attorneys_df[attorneys_df['Target Hours'] > 1]
+                
                 # Get attorneys in filtered data
                 if 'Associated Attorney' in filtered_df.columns:
                     active_attorneys = filtered_df['Associated Attorney'].unique()
                     
-                    # Filter attorneys dataframe
+                    # Determine the number of full months in the filtered data
+                    if 'Date' in filtered_df.columns:
+                        # Get min and max dates
+                        min_date = filtered_df['Date'].min()
+                        max_date = filtered_df['Date'].max()
+                        
+                        # Create a date range of all months between min and max
+                        all_months = pd.date_range(
+                            start=pd.Timestamp(min_date.year, min_date.month, 1),
+                            end=pd.Timestamp(max_date.year, max_date.month, 1),
+                            freq='MS'  # Month Start frequency
+                        )
+                        
+                        # Count months that have data
+                        months_with_data = filtered_df.groupby(
+                            [filtered_df['Date'].dt.year, filtered_df['Date'].dt.month]
+                        ).size()
+                        
+                        # Count only full months (where we have data for the entire month)
+                        current_month = pd.Timestamp.now().replace(day=1)
+                        full_months = len([m for m in months_with_data.index if 
+                                        pd.Timestamp(m[0], m[1], 1) < current_month])
+                        
+                        # Ensure we have at least 1 month to avoid division by zero
+                        num_months = max(1, full_months)
+                    else:
+                        # If we can't determine months, default to 1
+                        num_months = 1
+                    
+                    # Filter attorney hours
                     attorney_hours = filtered_df.groupby('Associated Attorney')['Quantity / Hours'].sum().reset_index()
                     
-                    # Merge with attorney targets
-                    attorney_targets = attorneys_df[attorneys_df['Attorney Name'].isin(active_attorneys)]
-                    attorney_util = pd.merge(attorney_hours, attorney_targets, 
-                                             left_on='Associated Attorney', 
-                                             right_on='Attorney Name',
-                                             how='left')
+                    # Merge with attorney targets (only valid attorneys)
+                    valid_active_attorneys = valid_attorneys[valid_attorneys['Attorney Name'].isin(active_attorneys)]
+                    attorney_util = pd.merge(attorney_hours, valid_active_attorneys, 
+                                            left_on='Associated Attorney', 
+                                            right_on='Attorney Name',
+                                            how='inner')
                     
-                    # Calculate utilization percentage
-                    attorney_util['Utilization %'] = attorney_util['Quantity / Hours'] / attorney_util['Target Hours'] * 100
+                    # Calculate utilization percentage using number of months
+                    attorney_util['Total Target Hours'] = attorney_util['Target Hours'] * num_months
+                    attorney_util['Utilization %'] = (attorney_util['Quantity / Hours'] / 
+                                                    attorney_util['Total Target Hours']) * 100
                     attorney_util = attorney_util.sort_values('Utilization %', ascending=False).head(10)
+                    
+                    # Display the number of months used in calculation (small text)
+                    st.caption(f"Utilization based on {num_months} full month(s) of data")
                     
                     fig = px.bar(attorney_util, x='Associated Attorney', y='Utilization %',
                                  title='Attorney Utilization vs Target (Top 10)',
@@ -933,32 +970,66 @@ def create_attorney_analysis(filtered_df, attorneys_df):
         st.warning("Attorney data is not available. Please check your Excel file structure.")
         return
     
-    # Hours vs target by attorney
+    # Hours vs target by attorney - MODIFIED CALCULATION
     if not attorneys_df.empty and 'Target Hours' in attorneys_df.columns and 'Attorney Name' in attorneys_df.columns:
         try:
-            # Get active attorneys
+            # Filter attorneys with Target Hours > 1
+            valid_attorneys = attorneys_df[attorneys_df['Target Hours'] > 1]
+            
+            # Get active attorneys from the filtered data
             active_attorneys = filtered_df['Associated Attorney'].unique()
             
             # Get hours by attorney
             attorney_hours = filtered_df.groupby('Associated Attorney')['Quantity / Hours'].sum().reset_index()
             
-            # Merge with attorney targets
-            attorney_targets = attorneys_df[attorneys_df['Attorney Name'].isin(active_attorneys)]
-            attorney_util = pd.merge(attorney_hours, attorney_targets, 
-                                    left_on='Associated Attorney', 
-                                    right_on='Attorney Name',
-                                    how='left')
+            # Determine the number of full months in the filtered data
+            if 'Date' in filtered_df.columns:
+                # Get min and max dates
+                min_date = filtered_df['Date'].min()
+                max_date = filtered_df['Date'].max()
+                
+                # Create a date range of all months between min and max
+                all_months = pd.date_range(
+                    start=pd.Timestamp(min_date.year, min_date.month, 1),
+                    end=pd.Timestamp(max_date.year, max_date.month, 1),
+                    freq='MS'  # Month Start frequency
+                )
+                
+                # Count months that have data
+                months_with_data = filtered_df.groupby([filtered_df['Date'].dt.year, filtered_df['Date'].dt.month]).size()
+                
+                # Count only full months (where we have data for the entire month)
+                # A full month is one where we have entries and it's not the current month
+                # (assuming we're running this during an incomplete month)
+                current_month = pd.Timestamp.now().replace(day=1)
+                full_months = len([m for m in months_with_data.index if 
+                                   pd.Timestamp(m[0], m[1], 1) < current_month])
+                
+                # Ensure we have at least 1 month to avoid division by zero
+                num_months = max(1, full_months)
+            else:
+                # If we can't determine months, default to 1
+                num_months = 1
             
-            # Calculate utilization percentage
-            attorney_util['Utilization %'] = attorney_util['Quantity / Hours'] / attorney_util['Target Hours'] * 100
+            # Merge with attorney targets (only for valid attorneys)
+            valid_active_attorneys = valid_attorneys[valid_attorneys['Attorney Name'].isin(active_attorneys)]
+            
+            attorney_util = pd.merge(attorney_hours, valid_active_attorneys, 
+                                     left_on='Associated Attorney', 
+                                     right_on='Attorney Name',
+                                     how='inner')  # Changed to inner join to only include valid attorneys
+            
+            # Calculate utilization percentage using number of months
+            attorney_util['Total Target Hours'] = attorney_util['Target Hours'] * num_months
+            attorney_util['Utilization %'] = (attorney_util['Quantity / Hours'] / attorney_util['Total Target Hours']) * 100
             attorney_util = attorney_util.sort_values('Utilization %', ascending=False)
             
-            # Filter out attorneys with 0 or 1 hour
-            attorney_util = attorney_util[attorney_util['Quantity / Hours'] > 1]
-            
             with st.expander("Attorney Utilization vs Target", expanded=True):
+                # Display the number of months used in calculation
+                st.info(f"Utilization calculated based on {num_months} full month(s) of data.")
+                
                 fig = px.bar(attorney_util, x='Associated Attorney', y='Utilization %',
-                            title='Attorney Utilization vs Target',
+                            title=f'Attorney Utilization vs Target ({num_months} month(s))',
                             labels={'Associated Attorney': 'Attorney', 'Utilization %': 'Utilization %'},
                             color_discrete_sequence=[colors['secondary']])
                 
@@ -1020,6 +1091,61 @@ def create_attorney_analysis(filtered_df, attorneys_df):
             st.warning(f"Could not create fees chart: {str(e)}")
     else:
         st.info("Fee data not available for this visualization.")
+    
+    # Attorney utilization table - UPDATED
+    with st.expander("Attorney Utilization Details", expanded=True):
+        if not attorneys_df.empty and 'Target Hours' in attorneys_df.columns and 'Attorney Name' in attorneys_df.columns:
+            try:
+                # Prepare attorney utilization table (use the already calculated attorney_util)
+                attorney_detail = attorney_util.copy()
+                
+                # Check if 'Practice Area (Primary)' exists
+                practice_area_col = None
+                if 'Practice Area (Primary)' in attorney_detail.columns:
+                    practice_area_col = 'Practice Area (Primary)'
+                else:
+                    # Look for alternative practice area column
+                    pa_cols = [col for col in attorney_detail.columns if 'PRACTICE' in col.upper()]
+                    if pa_cols:
+                        practice_area_col = pa_cols[0]
+                
+                # Select columns based on availability
+                columns_to_select = ['Associated Attorney', 'Quantity / Hours', 'Target Hours', 'Total Target Hours', 'Utilization %']
+                if practice_area_col:
+                    columns_to_select.append(practice_area_col)
+                
+                # Select only available columns
+                available_columns = [col for col in columns_to_select if col in attorney_detail.columns]
+                attorney_detail = attorney_detail[available_columns]
+                
+                # Rename columns
+                column_mapping = {
+                    'Associated Attorney': 'Attorney', 
+                    'Quantity / Hours': 'Hours', 
+                    'Target Hours': 'Monthly Target', 
+                    'Total Target Hours': 'Total Target',
+                    'Utilization %': 'Utilization %'
+                }
+                if practice_area_col:
+                    column_mapping[practice_area_col] = 'Primary Practice Area'
+                
+                attorney_detail.columns = [column_mapping.get(col, col) for col in attorney_detail.columns]
+                
+                # Format columns
+                attorney_detail['Utilization %'] = attorney_detail['Utilization %'].apply(lambda x: f"{x:.1f}%" if not pd.isna(x) else "N/A")
+                
+                # Sort by utilization
+                attorney_detail = attorney_detail.sort_values('Hours', ascending=False)
+                
+                # Display months info
+                st.info(f"Utilization calculated based on {num_months} full month(s) of data.")
+                
+                # Hide index and allow scrolling
+                st.dataframe(attorney_detail, hide_index=True, use_container_width=True, height=600)
+            except Exception as e:
+                st.warning(f"Could not create attorney utilization table: {str(e)}")
+        else:
+            st.info("Attorney target data not available. Cannot show utilization table.")
     
     # NEW: Average Hours per Attorney
     st.subheader("Attorney Metrics")
@@ -1145,55 +1271,6 @@ def create_attorney_analysis(filtered_df, attorneys_df):
                 st.info("FX score data not available for this visualization.")
     except Exception as e:
         st.warning(f"Could not create FX score visualization: {str(e)}")
-    
-    # Attorney utilization table
-    with st.expander("Attorney Utilization Details", expanded=True):
-        if not attorneys_df.empty and 'Target Hours' in attorneys_df.columns and 'Attorney Name' in attorneys_df.columns:
-            try:
-                # Prepare attorney utilization table
-                attorney_detail = attorney_util.copy()
-                
-                # Check if 'Practice Area (Primary)' exists
-                practice_area_col = None
-                if 'Practice Area (Primary)' in attorney_detail.columns:
-                    practice_area_col = 'Practice Area (Primary)'
-                else:
-                    # Look for alternative practice area column
-                    pa_cols = [col for col in attorney_detail.columns if 'PRACTICE' in col.upper()]
-                    if pa_cols:
-                        practice_area_col = pa_cols[0]
-                
-                # Select columns based on availability
-                columns_to_select = ['Associated Attorney', 'Quantity / Hours', 'Target Hours', 'Utilization %']
-                if practice_area_col:
-                    columns_to_select.append(practice_area_col)
-                
-                attorney_detail = attorney_detail[columns_to_select]
-                
-                # Rename columns
-                column_mapping = {
-                    'Associated Attorney': 'Attorney', 
-                    'Quantity / Hours': 'Hours', 
-                    'Target Hours': 'Target Hours', 
-                    'Utilization %': 'Utilization %'
-                }
-                if practice_area_col:
-                    column_mapping[practice_area_col] = 'Primary Practice Area'
-                
-                attorney_detail.columns = [column_mapping.get(col, col) for col in attorney_detail.columns]
-                
-                # Format columns
-                attorney_detail['Utilization %'] = attorney_detail['Utilization %'].apply(lambda x: f"{x:.1f}%" if not pd.isna(x) else "N/A")
-                
-                # Sort by utilization
-                attorney_detail = attorney_detail.sort_values('Hours', ascending=False)
-                
-                # Hide index and allow scrolling
-                st.dataframe(attorney_detail, hide_index=True, use_container_width=True, height=600)
-            except Exception as e:
-                st.warning(f"Could not create attorney utilization table: {str(e)}")
-        else:
-            st.info("Attorney target data not available. Cannot show utilization table.")
     
     # Practice area distribution
     st.subheader("Practice Area Analysis")
@@ -1618,4 +1695,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
